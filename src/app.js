@@ -16,8 +16,13 @@ import {
   TransferAbi
 } from './data/abi.js';
 
+import generateTweet from './tweetCopy.js';
 import getRecentLogs from './getLogs.js';
 import Web3EthAbi from 'web3-eth-abi';
+
+import Twitter from 'twitter';
+import config from './config.js';
+var T = new Twitter(config);
 
 import {
   identifyAddress
@@ -43,23 +48,38 @@ const processData = d => {
         identifyAddress(UNISWAP, fromDelegate), "=>",
         identifyAddress(UNISWAP, toDelegate)
       )
+    } else if (topics[0] === UniTransfer){
+      const { from, to, amount } = Web3EthAbi.decodeLog(TransferAbi, data, topics.slice(1));
+      console.log('b',
+        identifyAddress(UNISWAP, from), "=>",
+        identifyAddress(UNISWAP, to),
+        amount / 1e18
+      )
     } else if (topics[0] === UniDelegateVotesChanged){
       const { delegate, previousBalance, newBalance } = Web3EthAbi.decodeLog(DelegateVotesChangedAbi, data, topics.slice(1));
-      console.log('b',
+      console.log('c',
         identifyAddress(UNISWAP, delegate),
         newBalance / 1e18 - previousBalance / 1e18,
         previousBalance / 1e18,
         newBalance / 1e18
       )
-    } else if (topics[0] === UniTransfer){
-      const { from, to, amount } = Web3EthAbi.decodeLog(TransferAbi, data, topics.slice(1));
-      console.log('c',
-        identifyAddress(UNISWAP, from), "=>",
-        identifyAddress(UNISWAP, to),
-        amount / 1e18
-      )
     }
   });
 }
 
-processData(await getRecentLogs())
+processData(await getRecentLogs());
+
+// const params = generateTweet();
+//
+// T.post('statuses/update', params, (err, response) => {
+//   // If the favorite fails, log the error message
+//   if(err){
+//     console.log(err);
+//   }
+//   // If the favorite is successful, log the url of the tweet
+//   else{
+//     let username = response.user.screen_name;
+//     let tweetId = response.id_str;
+//     console.log('Favorited: ', `https://twitter.com/${username}/status/${tweetId}`)
+//   }
+// })

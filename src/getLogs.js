@@ -12,6 +12,8 @@ import {
   UniTransfer
 } from './data/events.js';
 
+import { getCurrentBlockNumber } from './utils/helpers.js';
+
 import {
   DelegateVotesChangedAbi,
   DelegateChangedAbi,
@@ -21,10 +23,8 @@ import {
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 
 
-const generateUrl = (address, topic0) => {
-  // Change to block to "latest"
-  const fromBlock = 10963950;
-  const toBlock = 10964075;
+const generateUrl = (address, topic0, fromBlock) => {
+  const toBlock = 'latest';
   return `https://api.etherscan.io/api?module=logs&action=getLogs&fromBlock=${fromBlock}&toBlock=${toBlock}&address=${address}&topic0=${topic0}&apikey=${ETHERSCAN_API_KEY}`;
 }
 
@@ -41,15 +41,18 @@ const processRaw = obj => {
 }
 
 const mergeAndOrder = (responses) => {
-  const one = processRaw(responses[0]);
-  const two = processRaw(responses[1]);
+  const delegateChanged = processRaw(responses[0]);
+  const delegateVotesChanged = processRaw(responses[1]);
+  const transfers = processRaw(responses[2]); // API only returns top 1k... => block range cannot be too large
 
-  const targetTxs = one.concat(two).map(d => d.transactionHash);
-  const three = processRaw(responses[2]).filter(tx => {
+  // CHECK, some transfers are being excluded...
+  const delegateTx = delegateChanged.concat(delegateVotesChanged);
+  const targetTxs = [...new Set(delegateTx.map(tx => tx.transactionHash))];
+  const targetTransfers = transfers.filter(tx => {
     return targetTxs.includes(tx.transactionHash);
   })
 
-  const sorted = one.concat(two).concat(three).sort((a,b) => {
+  const sorted = delegateTx.concat(targetTransfers).sort((a,b) => {
     var n = a.blockNumber - b.blockNumber;
     if (n !== 0) {
         return n;
@@ -66,9 +69,12 @@ const mergeAndOrder = (responses) => {
 }
 
 const getRecentLogs = async () => {
-  const url1 = generateUrl(UniContract, UniDelegateChanged);
-  const url2 = generateUrl(UniContract, UniDelegateVotesChanged);
-  const url3 = generateUrl(UniContract, UniTransfer);
+  const fromBlock = await getCurrentBlockNumber() - 100; // ~last 22ish minutes
+  console.log(fromBlock, fromBlock + 100)
+
+  const url1 = generateUrl(UniContract, UniDelegateChanged, fromBlock);
+  const url2 = generateUrl(UniContract, UniDelegateVotesChanged, fromBlock);
+  const url3 = generateUrl(UniContract, UniTransfer, fromBlock);
 
   const request1 = axios.get(url1)
   const request2 = axios.get(url2)
