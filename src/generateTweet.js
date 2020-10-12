@@ -105,3 +105,63 @@ const postTweet = params => {
 };
 
 export default generateTweet;
+
+const delegateCopy = dvc => {
+  const { delegate, previousBalance, newBalance } = dvc;
+  const plus = newBalance - previousBalance > 0 ? '+' : null;
+  return `${delegate}: ${plus}${fmt(newBalance - previousBalance)} => ${fmt(newBalance)}`
+}
+
+// Note there is a case where there are multiple transfers in a single tx...
+// ex: 0xfc4f03f3a711ccfa9c8315d7ec15ad7bcd00b9bf6560d8852d8cfb77bc0e3841
+// ^Which is a swap operation (user acquiring more UNI tokens via uniswap)
+// b + c: "AAA transfers tokens to BBB, delegate CCC loses ___ tokens, has ___ remaining" (can be 2c...)
+// b + 2c:"AAA transfers tokens to BBB, delegate CCC loses ___ tokens, delegate DDD gains ____"
+const transferDelegateVotesChangedCopy = (protocol, transfer, dvc, dvc2) => {
+  const { from, to, amount } = transfer;
+  const ticker = protocol === UNISWAP ? 'UNI' : 'COMP';
+
+  return `
+    ${from} transfers ${fmt(amount)} $${ticker}.
+    \n
+    \ndelegate${is2nd ? 's' : null}:
+    \n${delegateCopy(dvc)}
+    \n${dvc2 !== null ? delegateCopy(dvc2) : null}
+    \n${tx}#eventlog
+  `
+}
+
+// a + c: "AAA delegates ___ tokens to AAA, new balance ____" (0x000 address)
+// a + c: "AAA transfers ____ tokens delegate from ____ to ____" => may or may not be things here...
+const delegateChangedCopy = (protocol, delegateChanged, dvc, dvc2) => {
+  const { delegator, fromDelegate, toDelegate } = delegateChanged;
+  const { delegate, previousBalance, newBalance } = dvc;
+  const ticker = protocol === UNISWAP ? 'UNI' : 'COMP';
+
+  // New delegation
+  if (fromDelegate === '0x0000000000000000000000000000000000000000') {
+    return `
+      ${delegator} delegates ${fmt(amount)} $${ticker} to ${toDelegate}.
+      \n
+      \nNew balance of ${fmt(newBalance)}
+    `
+  }
+  // Undelegations are very uncommon
+  else if (toDelegate === '0x0000000000000000000000000000000000000000') {
+    return `
+      ${delegator} undelegates ${fmt(amount)} $${ticker} from ${fromDelegate}.
+      \n
+      \nNew balance of ${fmt(newBalance)}
+    `
+  } else { // check that a case is not missing... users could delegate to a 0x0...
+    return `
+      ${delegator} redelegates ${fmt(amount)} $${ticker}
+      \n
+      \nfrom:
+      \n${fromBlock}
+      \n${delegateCopy(dvc)}
+      \nto:
+      \n${delegateCopy(dvc2)}
+    `
+  }
+}

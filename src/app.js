@@ -31,6 +31,12 @@ const processData = (protocol, transactions) => {
   let bn = 0;
   let txHash = '';
 
+  // High probability of breaking...
+  let delegateChanged = {};
+  let dvc = {};
+  let dvc2 = {};
+  let transfer = {};
+
   transactions.forEach((item, i) => {
     const { data, topics, blockNumber, transactionHash } = item;
     if (blockNumber !== bn) {
@@ -40,9 +46,14 @@ const processData = (protocol, transactions) => {
     if (transactionHash !== txHash) {
       console.log(transactionHash);
       txHash = transactionHash;
+      delegateChanged = {};
+      dvc = {};
+      dvc2 = {};
+      transfer = {};
     }
     if (topics[0] === DelegateChanged) {
       const { delegator, fromDelegate, toDelegate } = Web3EthAbi.decodeLog(DelegateChangedAbi, data, topics.slice(1))
+      delegateChanged = { delegator, fromDelegate, toDelegate }
       console.log('a',
         identifyAddress(protocol, delegator),
         identifyAddress(protocol, fromDelegate), "=>",
@@ -50,6 +61,7 @@ const processData = (protocol, transactions) => {
       )
     } else if (topics[0] === Transfer){
       const { from, to, amount } = Web3EthAbi.decodeLog(TransferAbi, data, topics.slice(1));
+      transfer = { from, to, amount };
       console.log('b',
         identifyAddress(protocol, from), "=>",
         identifyAddress(protocol, to),
@@ -57,6 +69,11 @@ const processData = (protocol, transactions) => {
       )
     } else if (topics[0] === DelegateVotesChanged){
       const { delegate, previousBalance, newBalance } = Web3EthAbi.decodeLog(DelegateVotesChangedAbi, data, topics.slice(1));
+      if (Object.keys(dvc).length === 0) {
+        dvc = { delegate, previousBalance, newBalance }
+      } else {
+        dvc2 = { delegate, previousBalance, newBalance }
+      }
       console.log('c',
         identifyAddress(protocol, delegate),
         newBalance / 1e18 - previousBalance / 1e18,
@@ -80,18 +97,18 @@ const start = async () => {
 
   const func = async () => {
     const fromBlock = maxBlock;
-    const  { recentLogs: compLogs, mostRecentBlock } = await getRecentLogs(CompContract, fromBlock);
+    const  { recentLogs: compLogs, mostRecentBlock: mrb1 } = await getRecentLogs(CompContract, fromBlock);
     console.log("**************Compound**************")
     processData(COMPOUND, compLogs);
 
     await sleep(2000); // delay to not hit Etherscan's API limits
 
-    const { recentLogs: uniLogs } = await getRecentLogs(UniContract, fromBlock);
+    const { recentLogs: uniLogs, mostRecentBlock: mrb2 } = await getRecentLogs(UniContract, fromBlock);
     console.log("**************Uniswap**************")
     processData(UNISWAP, uniLogs);
 
-    maxBlock = mostRecentBlock;
-    console.log("mostRecentBlock:", mostRecentBlock);
+    maxBlock = Math.max(mrb1, mrb2) + 1;
+    console.log("mostRecentBlock:", maxBlock - 1);
   }
 
   func(); // run on start
@@ -99,5 +116,3 @@ const start = async () => {
 }
 
 start();
-
-// generateTweet();
