@@ -1,9 +1,9 @@
 # Delegate Bot
 
-Every time there is a large delegation change, this bot will post to Twitter.
+Every time there is a large delegation change, this bot will post to [@dele_rekt](https://twitter.com/dele_rekt) on Twitter.
 
 ## Tweet Content
-- link to etherscan
+- link to Etherscan
 - block height / block time
 - tokens transfered (from + to)
 - change in delegate balance

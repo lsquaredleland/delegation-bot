@@ -6,26 +6,26 @@ import Web3EthAbi from 'web3-eth-abi';
 import web3 from 'web3';
 
 import {
-  UniDelegateChanged,
-  UniDelegateVotesChanged,
-  UniContract,
-  UniTransfer
+  DelegateChanged,
+  DelegateVotesChanged,
+  Transfer,
 } from './data/events.js';
-
-import { getCurrentBlockNumber } from './utils/helpers.js';
-
-import {
-  DelegateVotesChangedAbi,
-  DelegateChangedAbi,
-  TransferAbi
-} from './data/abi.js';
 
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 
 
 const generateUrl = (address, topic0, fromBlock) => {
-  const toBlock = 'latest';
-  return `https://api.etherscan.io/api?module=logs&action=getLogs&fromBlock=${fromBlock}&toBlock=${toBlock}&address=${address}&topic0=${topic0}&apikey=${ETHERSCAN_API_KEY}`;
+  const params = {
+    module: 'logs',
+    action: 'getLogs',
+    fromBlock,
+    toBlock: 'latest',
+    address,
+    topic0,
+    apikey: ETHERSCAN_API_KEY,
+  }
+
+  return `https://api.etherscan.io/api?${new URLSearchParams(params).toString()}`
 }
 
 const convertHex = obj => {
@@ -40,12 +40,12 @@ const processRaw = obj => {
   return obj.data.result.map(d => convertHex(d))
 }
 
-const mergeAndOrder = (responses) => {
+const mergeAndOrder = (responses, fromBlock) => {
   const delegateChanged = processRaw(responses[0]);
   const delegateVotesChanged = processRaw(responses[1]);
-  const transfers = processRaw(responses[2]); // API only returns top 1k... => block range cannot be too large
+  // API only returns top 1k... => block range cannot be too large
+  const transfers = processRaw(responses[2]);
 
-  // CHECK, some transfers are being excluded...
   const delegateTx = delegateChanged.concat(delegateVotesChanged);
   const targetTxs = [...new Set(delegateTx.map(tx => tx.transactionHash))];
   const targetTransfers = transfers.filter(tx => {
@@ -60,21 +60,25 @@ const mergeAndOrder = (responses) => {
 
     if (a.transactionHash === b.transactionHash) {
       return a.logIndex - b.logIndex;
-    }
+    };
 
     return a.transactionHash - b.transactionHash;
-  })
+  });
 
-  return sorted
+  const mostRecentBlock = transfers.length === 0
+    ? fromBlock
+    : Math.max.apply(Math, transfers.map(o => o.blockNumber));
+
+  return {
+    recentLogs: sorted,
+    mostRecentBlock,
+  }
 }
 
-const getRecentLogs = async () => {
-  const fromBlock = await getCurrentBlockNumber() - 100; // ~last 22ish minutes
-  console.log(fromBlock, fromBlock + 100)
-
-  const url1 = generateUrl(UniContract, UniDelegateChanged, fromBlock);
-  const url2 = generateUrl(UniContract, UniDelegateVotesChanged, fromBlock);
-  const url3 = generateUrl(UniContract, UniTransfer, fromBlock);
+const getRecentLogs = async (contract, fromBlock) => {
+  const url1 = generateUrl(contract, DelegateChanged, fromBlock);
+  const url2 = generateUrl(contract, DelegateVotesChanged, fromBlock);
+  const url3 = generateUrl(contract, Transfer, fromBlock);
 
   const request1 = axios.get(url1)
   const request2 = axios.get(url2)
@@ -83,7 +87,14 @@ const getRecentLogs = async () => {
   // ADD error handling
   return await axios.all([request1, request2, request3])
     .then(axios.spread((...responses) => {
-      return mergeAndOrder(responses);
+      if (responses[0].data.message === 'NOTOK'
+        || responses[1].data.message === 'NOTOK'
+        || responses[2].data.message === 'NOTOK'
+      ) {
+        throw 'NOTOK';
+      };
+
+      return mergeAndOrder(responses, fromBlock);
     }))
     .catch(err => {
       console.log('Error', err);
