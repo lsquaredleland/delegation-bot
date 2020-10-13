@@ -4,6 +4,8 @@ dotenv.config();
 import axios from 'axios';
 import Web3EthAbi from 'web3-eth-abi';
 import web3 from 'web3';
+import groupBy from 'lodash.groupby';
+import { objectMap } from './utils/helpers.js'
 
 import {
   DelegateChanged,
@@ -52,25 +54,35 @@ const mergeAndOrder = (responses, fromBlock) => {
     return targetTxs.includes(tx.transactionHash);
   })
 
-  const sorted = delegateTx.concat(targetTransfers).sort((a,b) => {
-    var n = a.blockNumber - b.blockNumber;
+  const grouped = groupBy(delegateTx.concat(targetTransfers), tx => {
+    return tx.transactionHash
+  })
+
+  // Sorting by tx by block number then by index
+  const sortOuter = Object.values(grouped).sort((a, b) => {
+    var n = a[0].blockNumber - b[0].blockNumber;
     if (n !== 0) {
         return n;
     }
+    return a[0].logIndex - b[0].logIndex
+  })
 
-    if (a.transactionHash === b.transactionHash) {
-      return a.logIndex - b.logIndex;
-    };
+  // grouping tx by evt type, then order by index
+  const sortInner = sortOuter.map(txSet => {
+    const grouped = groupBy(txSet, tx => tx.topics[0])
+    return objectMap(grouped, v => {
+      return v.sort((a, b) => a.logIndex - b.logIndex)
+    })
+    // return txSet.sort((a, b) => a.logIndex - b.logIndex)
+  })
 
-    return a.transactionHash - b.transactionHash;
-  });
 
   const mostRecentBlock = transfers.length === 0
     ? fromBlock
     : Math.max.apply(Math, transfers.map(o => o.blockNumber));
 
   return {
-    recentLogs: sorted,
+    recentLogs: sortInner,
     mostRecentBlock,
   }
 }

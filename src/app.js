@@ -17,80 +17,100 @@ import {
   TransferAbi
 } from './data/abi.js';
 
-import generateTweet from './generateTweet.js';
+import {
+  transferDelegateVotesChangedCopy,
+  delegateChangedCopy,
+  complexTransactionCopy
+} from './generateTweet.js';
+
 import getRecentLogs from './getLogs.js';
 import { getCurrentBlockNumber } from './utils/helpers.js';
 import Web3EthAbi from 'web3-eth-abi';
 
 import {
-  identifyAddress
+  identifyAddress,
+  sleep
 } from './utils/helpers.js'
 
 
+const decodeDelegateChanged = (protocol, evt) => {
+  return evt && evt.map(log => {
+    const { data, topics } = log;
+    const { delegator, fromDelegate, toDelegate } = Web3EthAbi.decodeLog(DelegateChangedAbi, data, topics.slice(1))
+    console.log('a',
+      identifyAddress(protocol, delegator),
+      identifyAddress(protocol, fromDelegate), "=>",
+      identifyAddress(protocol, toDelegate)
+    )
+    return { delegator, fromDelegate, toDelegate };
+  })
+}
+
+const decodeTransfer = (protocol, evt) => {
+  return evt && evt.map(log => {
+    const { data, topics } = log;
+    const { from, to, amount } = Web3EthAbi.decodeLog(TransferAbi, data, topics.slice(1));
+    console.log('b',
+      identifyAddress(protocol, from), "=>",
+      identifyAddress(protocol, to),
+      amount / 1e18
+    )
+    return { from, to, amount };
+  })
+}
+
+const decodeDelegateVotesChanged = (protocol, evt) => {
+  return evt && evt.map(log => {
+    const { data, topics } = log;
+    const { delegate, previousBalance, newBalance } = Web3EthAbi.decodeLog(DelegateVotesChangedAbi, data, topics.slice(1));
+    console.log('c',
+      identifyAddress(protocol, delegate),
+      newBalance / 1e18 - previousBalance / 1e18,
+      previousBalance / 1e18,
+      newBalance / 1e18
+    )
+    return { delegate, previousBalance, newBalance };
+  })
+}
+
+// Some tx have multiples the below logs, which makes parsing logic difficult...
+// 0xfc4f03f3a711ccfa9c8315d7ec15ad7bcd00b9bf6560d8852d8cfb77bc0e3841 (Exchange)\
+// 0xe9772bdb37ed918c1368597f149b5d232a6229d1473400d49583960f3b8e1177 (Exchange)
+// 0xfa64aff60f16448c135ab0d382ea6df71d5e8c2e8f9168c6073cbba25b4d3a44 (Comp farming)
+// Farming tx on COMP... would take max(newBalance) - min(previousBalance) for change
+// OR sum on transfer per `to` address
 const processData = (protocol, transactions) => {
-  let bn = 0;
-  let txHash = '';
+  transactions.forEach(tx => {
+    const { blockNumber, transactionHash } = Object.values(tx)[0][0]
+    console.log(blockNumber, '-', transactionHash)
 
-  // High probability of breaking...
-  let delegateChanged = {};
-  let dvc = {};
-  let dvc2 = {};
-  let transfer = {};
+    const delegateChanged = decodeDelegateChanged(protocol, tx[DelegateChanged]);
+    const transfer = decodeTransfer(protocol, tx[Transfer]);
+    const delegateVotesChanged = decodeDelegateVotesChanged(protocol, tx[DelegateVotesChanged]);
 
-  transactions.forEach((item, i) => {
-    const { data, topics, blockNumber, transactionHash } = item;
-    if (blockNumber !== bn) {
-      console.log(blockNumber);
-      bn = blockNumber;
+    if (transfer && transfer.length > 1 && delegateVotesChanged) {
+      complexTransactionCopy(protocol, transactionHash, delegateVotesChanged)
+      return
     }
-    if (transactionHash !== txHash) {
-      console.log(transactionHash);
-      txHash = transactionHash;
-      delegateChanged = {};
-      dvc = {};
-      dvc2 = {};
-      transfer = {};
+
+    if (transfer && delegateVotesChanged) {
+      const [ t1 ] = transfer; // naively taking the 1st transfer...
+      const [ dvc, dvc2 ] = delegateVotesChanged;
+      transferDelegateVotesChangedCopy(protocol, transactionHash, t1, dvc, dvc2);
+
     }
-    if (topics[0] === DelegateChanged) {
-      const { delegator, fromDelegate, toDelegate } = Web3EthAbi.decodeLog(DelegateChangedAbi, data, topics.slice(1))
-      delegateChanged = { delegator, fromDelegate, toDelegate }
-      console.log('a',
-        identifyAddress(protocol, delegator),
-        identifyAddress(protocol, fromDelegate), "=>",
-        identifyAddress(protocol, toDelegate)
-      )
-    } else if (topics[0] === Transfer){
-      const { from, to, amount } = Web3EthAbi.decodeLog(TransferAbi, data, topics.slice(1));
-      transfer = { from, to, amount };
-      console.log('b',
-        identifyAddress(protocol, from), "=>",
-        identifyAddress(protocol, to),
-        amount / 1e18
-      )
-    } else if (topics[0] === DelegateVotesChanged){
-      const { delegate, previousBalance, newBalance } = Web3EthAbi.decodeLog(DelegateVotesChangedAbi, data, topics.slice(1));
-      if (Object.keys(dvc).length === 0) {
-        dvc = { delegate, previousBalance, newBalance }
-      } else {
-        dvc2 = { delegate, previousBalance, newBalance }
-      }
-      console.log('c',
-        identifyAddress(protocol, delegate),
-        newBalance / 1e18 - previousBalance / 1e18,
-        previousBalance / 1e18,
-        newBalance / 1e18
-      )
+
+    if (delegateChanged && delegateVotesChanged) {
+      const [ dc ] = delegateChanged;
+      const [ dvc, dvc2 ] = delegateVotesChanged;
+      delegateChangedCopy(protocol, transactionHash, dc, dvc, dvc2);
     }
-  });
+  })
 
   if (transactions.length === 0) {
     console.log("::No New Data")
   }
 }
-
-const sleep = (ms = 1000) => {
-  return new Promise(r => setTimeout(r, ms))
-};
 
 const start = async () => {
   let maxBlock = await getCurrentBlockNumber() - 100; // ~last 20ish minutes
@@ -98,13 +118,13 @@ const start = async () => {
   const func = async () => {
     const fromBlock = maxBlock;
     const  { recentLogs: compLogs, mostRecentBlock: mrb1 } = await getRecentLogs(CompContract, fromBlock);
-    console.log("**************Compound**************")
+    console.log("----------------------| Compound |----------------------")
     processData(COMPOUND, compLogs);
 
     await sleep(2000); // delay to not hit Etherscan's API limits
 
     const { recentLogs: uniLogs, mostRecentBlock: mrb2 } = await getRecentLogs(UniContract, fromBlock);
-    console.log("**************Uniswap**************")
+    console.log("----------------------| Uniswap |----------------------")
     processData(UNISWAP, uniLogs);
 
     maxBlock = Math.max(mrb1, mrb2) + 1;

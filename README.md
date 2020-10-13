@@ -2,6 +2,9 @@
 
 Every time there is a large delegation change, this bot will post to [@dele_rekt](https://twitter.com/dele_rekt) on Twitter.
 
+## Cornercases
+- COMP farming results in multiple `delegateVotesChanged()` when claiming COMP...
+
 ## Tweet Content
 - link to Etherscan
 - block height / block time

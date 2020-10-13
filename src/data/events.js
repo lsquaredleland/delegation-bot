@@ -4,3 +4,5 @@ export const Transfer = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55
 
 export const UniContract = "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984";
 export const CompContract = "0xc00e94cb662c3520282e6f5717214004a7f26888";
+
+export const UniGovContract = "0x5e4be8Bc9637f0EAA1A755019e06A68ce081D58F";

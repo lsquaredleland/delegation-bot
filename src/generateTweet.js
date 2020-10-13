@@ -8,7 +8,8 @@ import {
 } from './data/consts.js';
 
 import {
-  fmt
+  fmt,
+  identifyAddress
 } from './utils/helpers.js';
 
 
@@ -24,6 +25,7 @@ const lossLevel = (protocol, amt) => {
       } else if (amt > 10000) {
         return 1
       }
+      return 0
     case COMPOUND:
       if (amt > 100000) {
         return 4
@@ -34,6 +36,7 @@ const lossLevel = (protocol, amt) => {
       } else if (amt > 100) {
         return 1
       }
+      return 0
   }
 }
 
@@ -63,30 +66,115 @@ const emoji = level => {
   }
 }
 
-const generateStatus = () => {
-  const fromDelegate = 'Andre Multisig';
-  const toDelegate = 'Gauntlet';
-  const amt = 472274.06216579955;
-  const level = lossLevel(UNISWAP, amt);
-  const ticker = 'UNI'
-
-  const tx = 'https://etherscan.io/tx/0x9c17b77624dd2a7749a1b31e8bf72ffd32d7d4186a582a005189ac3443497163'
-  const status = `
-    ${emoji(level)} ${fromDelegate} ${emoji(level)} ${lossLabel(level)} ${fmt(amt)} $${ticker} to ${toDelegate}
-    \n
-    \n${tx}#eventlog
-  `;
-}
-
 // Could be humorous and always push delegations to Gauntlet :p
 // const status = `
 //   🙏Thanks to 0x9250b9b5c67618b4753abfa3ee52bc7a13e2b814 who made the right\
 //   decision to delegate ${fmt(amt)} $${ticker} from ${fromDelegate} to ${toDelegate}
 // `
 
-const generateTweet = (protocol) => {
+const getEtherscanUrl = txHash => {
+  return `https://etherscan.io/tx/${txHash}`;
+}
+
+const delegateCopy = (dvc, protocol) => {
+  const { delegate, previousBalance, newBalance } = dvc;
+  const plus = newBalance - previousBalance > 0 ? '+' : '';
+  const labeled = identifyAddress(protocol, delegate);
+  return `${labeled}: ${plus}${fmt((newBalance - previousBalance) / 1e18)} => ${fmt(newBalance / 1e18)}`
+}
+
+// b + c: "AAA transfers tokens to BBB, delegate CCC loses ___ tokens, has ___ remaining" (can be 2c...)
+// b + 2c:"AAA transfers tokens to BBB, delegate CCC loses ___ tokens, delegate DDD gains ____"
+export const transferDelegateVotesChangedCopy = (protocol, txHash, transfer, dvc, dvc2=null) => {
+  const { from, to, amount } = transfer;
+  const ticker = protocol === UNISWAP ? 'UNI' : 'COMP';
+  const is2nd = dvc2 !== null;
+
+  if (lossLevel(protocol, amount / 1e18) === 0) {
+    return;
+  }
+
+  const status = `
+    ${identifyAddress(protocol, from)} transfers ${fmt(amount / 1e18)} $${ticker}.
+    \n
+    \ndelegate${is2nd ? 's' : ''}:\
+    \n${delegateCopy(dvc, protocol)}
+    ${is2nd ? '\n' + delegateCopy(dvc2, protocol) : ''}
+    \n${getEtherscanUrl(txHash)}
+  `;
+  generateTweet(status);
+}
+
+// Called whenever there is > 1 UNI transfers
+export const complexTransactionCopy = (protocol, txHash, dvcs) => {
+  const ticker = protocol === UNISWAP ? 'UNI' : 'COMP';
+  const multiDvc = dvcs.length > 1;
+
+  const maxDiff = Math.max(dvcs.map(dvc => Math.abs(newBalance - previousBalance)));
+
+  if (lossLevel(protocol, maxDiff / 1e18) === 0) {
+    return;
+  }
+
+  const status = `
+    $${ticker} transaction.
+    \n
+    \ndelegate${multiDvc ? 's' : ''}:\
+    \n${dvcs.map(d => delegateCopy(d, protocol)).join('\n')}
+    \n${getEtherscanUrl(txHash)}
+  `;
+  generateTweet(status);
+}
+
+// a + c: "AAA delegates ___ tokens to AAA, new balance ____" (0x000 address)
+// a + c: "AAA transfers ____ tokens delegate from ____ to ____" => may or may not be things here...
+export const delegateChangedCopy = (protocol, txHash, dc, dvc, dvc2) => {
+  const { delegator, fromDelegate, toDelegate } = dc;
+  const { delegate, previousBalance, newBalance } = dvc;
+  const ticker = protocol === UNISWAP ? 'UNI' : 'COMP';
+
+  const amount = (newBalance - previousBalance) / 1e18; // verify accuracy
+  let status = ''
+
+  if (lossLevel(protocol, amount) === 0) {
+    return;
+  }
+
+  const delegatorLabeled = identifyAddress(protocol, delegator);
+  const toDelegateLabeled = identifyAddress(protocol, toDelegate);
+
+  // New delegation
+  if (fromDelegate === '0x0000000000000000000000000000000000000000') {
+    status = `${delegatorLabeled} delegates ${fmt(amount)} $${ticker} to ${toDelegateLabeled}.
+      \n
+      \nNew balance of ${fmt(newBalance / 1e18)}
+    `;
+  }
+  else if (toDelegate === '0x0000000000000000000000000000000000000000') {
+    // undelegatng to a 0x0 address is very uncommon
+    status = `
+      ${delegatorLabeled} undelegates ${fmt(amount)} $${ticker} from ${toDelegateLabeled}.
+      \n
+      \nNew balance of ${fmt(newBalance / 1e18)}
+    `;
+  } else { // check that a case is not missing... users could delegate to a 0x0...
+    status =  `
+      ${delegatorLabeled} redelegates ${fmt(amount)} $${ticker}
+      \n
+      \nfrom:
+      \n${fromBlock}
+      \n${delegateCopy(dvc, protocol)}
+      \nto:
+      \n${delegateCopy(dvc2, protocol)}
+    `;
+  }
+  status = `${status}\n${getEtherscanUrl(txHash)}`
+  generateTweet(status);
+}
+
+const generateTweet = (status) => {
   postTweet({
-    status: generateStatus(),
+    status,
     media_ids: '', // NOTE media has to be uploaded separately
   });
 };
@@ -99,69 +187,7 @@ const postTweet = params => {
     } else {
       let username = response.user.screen_name;
       let tweetId = response.id_str;
-      console.log('Favorited: ', `https://twitter.com/${username}/status/${tweetId}`)
+      console.log('posted: ', `https://twitter.com/${username}/status/${tweetId}`)
     }
   })
 };
-
-export default generateTweet;
-
-const delegateCopy = dvc => {
-  const { delegate, previousBalance, newBalance } = dvc;
-  const plus = newBalance - previousBalance > 0 ? '+' : null;
-  return `${delegate}: ${plus}${fmt(newBalance - previousBalance)} => ${fmt(newBalance)}`
-}
-
-// Note there is a case where there are multiple transfers in a single tx...
-// ex: 0xfc4f03f3a711ccfa9c8315d7ec15ad7bcd00b9bf6560d8852d8cfb77bc0e3841
-// ^Which is a swap operation (user acquiring more UNI tokens via uniswap)
-// b + c: "AAA transfers tokens to BBB, delegate CCC loses ___ tokens, has ___ remaining" (can be 2c...)
-// b + 2c:"AAA transfers tokens to BBB, delegate CCC loses ___ tokens, delegate DDD gains ____"
-const transferDelegateVotesChangedCopy = (protocol, transfer, dvc, dvc2) => {
-  const { from, to, amount } = transfer;
-  const ticker = protocol === UNISWAP ? 'UNI' : 'COMP';
-
-  return `
-    ${from} transfers ${fmt(amount)} $${ticker}.
-    \n
-    \ndelegate${is2nd ? 's' : null}:
-    \n${delegateCopy(dvc)}
-    \n${dvc2 !== null ? delegateCopy(dvc2) : null}
-    \n${tx}#eventlog
-  `
-}
-
-// a + c: "AAA delegates ___ tokens to AAA, new balance ____" (0x000 address)
-// a + c: "AAA transfers ____ tokens delegate from ____ to ____" => may or may not be things here...
-const delegateChangedCopy = (protocol, delegateChanged, dvc, dvc2) => {
-  const { delegator, fromDelegate, toDelegate } = delegateChanged;
-  const { delegate, previousBalance, newBalance } = dvc;
-  const ticker = protocol === UNISWAP ? 'UNI' : 'COMP';
-
-  // New delegation
-  if (fromDelegate === '0x0000000000000000000000000000000000000000') {
-    return `
-      ${delegator} delegates ${fmt(amount)} $${ticker} to ${toDelegate}.
-      \n
-      \nNew balance of ${fmt(newBalance)}
-    `
-  }
-  // Undelegations are very uncommon
-  else if (toDelegate === '0x0000000000000000000000000000000000000000') {
-    return `
-      ${delegator} undelegates ${fmt(amount)} $${ticker} from ${fromDelegate}.
-      \n
-      \nNew balance of ${fmt(newBalance)}
-    `
-  } else { // check that a case is not missing... users could delegate to a 0x0...
-    return `
-      ${delegator} redelegates ${fmt(amount)} $${ticker}
-      \n
-      \nfrom:
-      \n${fromBlock}
-      \n${delegateCopy(dvc)}
-      \nto:
-      \n${delegateCopy(dvc2)}
-    `
-  }
-}
