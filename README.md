@@ -18,3 +18,4 @@ Every time there is a large change in delegation for [Uniswap](http://uniswap.io
 
 ### Misc to learn
 - What is the best way to store state in a node app? Or is the better approach to connect to an external database?
+- Are AMM pools weighting based on token price OR on token amt? (gut feeling is token prices...)

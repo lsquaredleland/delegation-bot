@@ -2,7 +2,6 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import axios from 'axios';
-import Web3EthAbi from 'web3-eth-abi';
 import web3 from 'web3';
 import groupBy from 'lodash.groupby';
 import { objectMap } from './utils/helpers.js'

@@ -110,9 +110,7 @@ export const complexTransactionCopy = (protocol, txHash, dvcs) => {
   const ticker = protocol === UNISWAP ? 'UNI' : 'COMP';
   const multiDvc = dvcs.length > 1;
 
-  const maxDiff = Math.max(...dvcs.map(d => Math.abs(d.newBalance - d.previousBalance)))
-  console.log(dvcs.map(d => Math.abs(d.newBalance - d.previousBalance)))
-  console.log(maxDiff)
+  const maxDiff = Math.max(...dvcs.map(d => Math.abs(d.newBalance - d.previousBalance)));
 
   const ll = lossLevel(protocol, maxDiff / 1e18);
   if (ll === 0) {
@@ -173,6 +171,6 @@ export const delegateChangedCopy = (protocol, txHash, dc, dvc, dvc2) => {
       \n${deletaDelegateCopy(dvc2, protocol)}
     `;
   }
-  status = `${emoji(ll)} ${status}\n${getEtherscanUrl(txHash)}`
+  status = `${emoji(ll)}${status}\n${getEtherscanUrl(txHash)}`
   postTweet(status);
 }

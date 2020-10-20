@@ -88,13 +88,14 @@ const processData = (protocol, transactions) => {
     const transfer = decodeTransfer(protocol, tx[Transfer]);
     const delegateVotesChanged = decodeDelegateVotesChanged(protocol, tx[DelegateVotesChanged]);
 
+    // Temporary hack
     if (transfer && transfer.length > 1 && delegateVotesChanged) {
       complexTransactionCopy(protocol, transactionHash, delegateVotesChanged)
       return
     }
 
     if (transfer && delegateVotesChanged) {
-      const [ t1 ] = transfer; // naively taking the 1st transfer...
+      const [ t1 ] = transfer;
       const [ dvc, dvc2 ] = delegateVotesChanged;
       transferDelegateVotesChangedCopy(protocol, transactionHash, t1, dvc, dvc2);
 
