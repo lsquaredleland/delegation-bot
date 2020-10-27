@@ -4,7 +4,10 @@ export const UniDelegates = {
   '0x1994b59e02cd0d09d839b03660c205e88a929b81': 'Andre Multisig',
   '0x8d07d225a769b7af3a923481e1fdf49180e6a265': '@MonetSupply',
   '0x2d407ddb06311396fe14d4b49da5f0471447d45c': '@AndreCronjeTech',
-  '0x88FB3D509fC49B515BFEb04e23f53ba339563981': '@rleshner' // verify why would this be different
+  '0x88FB3D509fC49B515BFEb04e23f53ba339563981': '@rleshner', // might be switched later
+  '0x84bb5196F0085D61a7C9AC5B903a26D7f009aC13': '@chrisblec',
+  '0x0be0ecc301a1c0175f07a66243cff628c24db852': '@HiturunkE',
+  '0xC9f7d5870Cc691E4F8d25399EC10C90d55805AC7': '@bneiluj', // currently no delegates at all
 }
 
 export const CompDelegates = {
