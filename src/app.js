@@ -7,71 +7,47 @@ import {
   DelegateChanged,
   DelegateVotesChanged,
   Transfer,
-  UniContract,
-  CompContract,
+  ProposalCanceled,
+  ProposalCreated,
+  ProposalExecuted,
+  ProposalQueued,
+  VoteCast,
 } from './data/events.js';
 
 import {
-  DelegateVotesChangedAbi,
-  DelegateChangedAbi,
-  TransferAbi
-} from './data/abi.js';
+  UniContract,
+  CompContract,
+  UniGovContract,
+  CompGovContract,
+} from './data/contracts.js';
+
+import {
+  decodeDelegateChanged,
+  decodeTransfer,
+  decodeDelegateVotesChanged,
+  decodeProposalCanceled,
+  decodeProposalCreated,
+  decodeProposalExecuted,
+  decodeProposalQueued,
+  decodeVoteCast,
+} from './utils/decode.js'
 
 import {
   transferDelegateVotesChangedCopy,
   delegateChangedCopy,
-  complexTransactionCopy
+  complexTransactionCopy,
+  ProposalCanceledCopy,
+  ProposalCreatedCopy,
+  ProposalExecutedCopy,
+  ProposalQueuedCopy,
+  VoteCastCopy,
 } from './generateTweet.js';
 
-import getRecentLogs from './getLogs.js';
+import { getRecentLogs, getRecentGovernanceLogs } from './getLogs.js';
 import { getCurrentBlockNumber } from './utils/helpers.js';
-import Web3EthAbi from 'web3-eth-abi';
 
-import {
-  identifyAddress,
-  sleep
-} from './utils/helpers.js'
+import { sleep } from './utils/helpers.js'
 
-
-const decodeDelegateChanged = (protocol, evt) => {
-  return evt && evt.map(log => {
-    const { data, topics } = log;
-    const { delegator, fromDelegate, toDelegate } = Web3EthAbi.decodeLog(DelegateChangedAbi, data, topics.slice(1))
-    console.log('a',
-      identifyAddress(protocol, delegator),
-      identifyAddress(protocol, fromDelegate), "=>",
-      identifyAddress(protocol, toDelegate)
-    )
-    return { delegator, fromDelegate, toDelegate };
-  })
-}
-
-const decodeTransfer = (protocol, evt) => {
-  return evt && evt.map(log => {
-    const { data, topics } = log;
-    const { from, to, amount } = Web3EthAbi.decodeLog(TransferAbi, data, topics.slice(1));
-    console.log('b',
-      identifyAddress(protocol, from), "=>",
-      identifyAddress(protocol, to),
-      amount / 1e18
-    )
-    return { from, to, amount };
-  })
-}
-
-const decodeDelegateVotesChanged = (protocol, evt) => {
-  return evt && evt.map(log => {
-    const { data, topics } = log;
-    const { delegate, previousBalance, newBalance } = Web3EthAbi.decodeLog(DelegateVotesChangedAbi, data, topics.slice(1));
-    console.log('c',
-      identifyAddress(protocol, delegate),
-      newBalance / 1e18 - previousBalance / 1e18,
-      previousBalance / 1e18,
-      newBalance / 1e18
-    )
-    return { delegate, previousBalance, newBalance };
-  })
-}
 
 // Some tx have multiples the below logs, which makes parsing logic difficult...
 // 0xfc4f03f3a711ccfa9c8315d7ec15ad7bcd00b9bf6560d8852d8cfb77bc0e3841 (Exchange)\
@@ -113,20 +89,80 @@ const processData = (protocol, transactions) => {
   }
 }
 
+// Inject tweets here
+const decodeGovLog = log => {
+  const { data, topics, address, transactionHash } = log
+  switch (topics[0]) {
+    case ProposalCanceled:
+      console.log('🔕ProposalCanceled', transactionHash);
+      return [ProposalCanceled, decodeProposalCanceled(data,topics)];
+    case ProposalCreated:
+      console.log('🏛️ProposalCreated', transactionHash);
+      return [ProposalCreated, decodeProposalCreated(data,topics)];
+    case ProposalExecuted:
+      console.log('🖋️📜ProposalExecuted', transactionHash);
+      return [ProposalExecuted, decodeProposalExecuted(data,topics)];
+    case ProposalQueued:
+      console.log('⌛ProposalQueued', transactionHash);
+      return [ProposalQueued, decodeProposalQueued(data,topics)];
+    case VoteCast:
+      console.log('🗳VoteCast️', transactionHash);
+      return [VoteCast, decodeVoteCast(data,topics)];
+  }
+}
+
+const processGovLogs = (protocol, logs) => {
+  logs.forEach(log => {
+    const { address, transactionHash } = log;
+
+    const [ type, data ] = decodeGovLog(log);
+
+    switch (type) {
+      case ProposalCanceled:
+        ProposalCanceledCopy(protocol, address, transactionHash, data);
+        break;
+      // case ProposalCreated:
+      //   ProposalCreatedCopy(protocol, address, transactionHash, data);
+      //   break;
+      case ProposalExecuted:
+        ProposalExecutedCopy(protocol, address, transactionHash, data);
+        break;
+      case ProposalQueued:
+        ProposalQueuedCopy(protocol, address, transactionHash, data);
+        break;
+      // case VoteCast:
+      //   VoteCastCopy(protocol, address, transactionHash, data);
+      //   break;
+    }
+  });
+
+}
+
 const start = async () => {
   let maxBlock = await getCurrentBlockNumber() - 100; // ~last 20ish minutes
 
   const func = async () => {
     const fromBlock = maxBlock;
-    const  { recentLogs: compLogs, mostRecentBlock: mrb1 } = await getRecentLogs(CompContract, fromBlock);
+    const {
+      recentLogs: compLogs,
+      mostRecentBlock: mrb1
+    } = await getRecentLogs(CompContract, fromBlock);
     console.log("----------------------| Compound |----------------------")
     processData(COMPOUND, compLogs);
+    const compGovLogs = await getRecentGovernanceLogs(CompGovContract, fromBlock);
+    processGovLogs(COMPOUND, compGovLogs)
 
     await sleep(2000); // delay to not hit Etherscan's API limits
 
-    const { recentLogs: uniLogs, mostRecentBlock: mrb2 } = await getRecentLogs(UniContract, fromBlock);
+    const {
+      recentLogs: uniLogs,
+      mostRecentBlock: mrb2
+    } = await getRecentLogs(UniContract, fromBlock);
     console.log("----------------------| Uniswap |----------------------")
     processData(UNISWAP, uniLogs);
+
+    const uniGovLogs = await getRecentGovernanceLogs(UniGovContract, fromBlock);
+    processGovLogs(UNISWAP, uniGovLogs)
 
     maxBlock = Math.max(mrb1, mrb2) + 1;
     console.log("mostRecentBlock:", maxBlock - 1);

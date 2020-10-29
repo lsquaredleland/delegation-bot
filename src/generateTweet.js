@@ -75,6 +75,10 @@ const getEtherscanUrl = txHash => {
   return `https://etherscan.io/tx/${txHash}`;
 }
 
+const getHandle = protocol => {
+  return protocol === UNISWAP ? '@UniswapProtocol' : '@compoundfinance';
+}
+
 const deletaDelegateCopy = (dvc, protocol) => {
   const { delegate, previousBalance, newBalance } = dvc;
   const plus = newBalance - previousBalance > 0 ? '+' : '';
@@ -173,4 +177,62 @@ export const delegateChangedCopy = (protocol, txHash, dc, dvc, dvc2) => {
   }
   status = `${emoji(ll)}${status}\n${getEtherscanUrl(txHash)}`
   postTweet(status);
+}
+
+const postpendUrl = (status, txHash) => {
+  return `${status}\n${getEtherscanUrl(txHash)}`
+}
+
+// Test on block 10400372 for COMP
+export const ProposalCanceledCopy = (protocol, address, txHash, data) => {
+  const labeled = identifyAddress(protocol, address);
+  const status = `
+    🔕Proposal ${data.id} Canceled
+    ${getHandle(protocol)}
+    \n
+    \nBy ${labeled}
+  `;
+
+  postTweet(postpendUrl(status, txHash));
+}
+
+export const ProposalCreatedCopy = (protocol, address, txHash, data) => {
+  const labeled = identifyAddress(protocol, address);
+  const status = `🏛️Proposal Created`;
+
+  postTweet(postpendUrl(status, txHash));
+}
+
+// Test on block 11072572 for COMP
+export const ProposalExecutedCopy = (protocol, address, txHash, data) => {
+  const labeled = identifyAddress(protocol, address);
+  const status = `
+    🖋️📜Proposal ${data.id} Executed
+    ${getHandle(protocol)}
+  `;
+
+  postTweet(postpendUrl(status, txHash));
+}
+
+// Test on block 11059503 for COMP
+export const ProposalQueuedCopy = (protocol, address, txHash, data) => {
+  const labeled = identifyAddress(protocol, address);
+
+  const date = new Date(data.eta * 1000);
+  const hoursDiff = (date - Date.now()) / 1000 / 60;
+
+  const status = `
+    ⌛Proposal ${data.id} Queued
+    ${getHandle(protocol)}
+    \nLive on ${date.toUTCString()} (~${hoursDiff} hours)
+  `;
+
+  postTweet(postpendUrl(status, txHash));
+}
+
+export const VoteCastCopy = (protocol, address, txHash, data) => {
+  const labeled = identifyAddress(protocol, address);
+  const status = '🗳VoteCast️';
+
+  postTweet(postpendUrl(status, txHash));
 }

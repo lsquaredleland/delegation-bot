@@ -4,7 +4,7 @@ dotenv.config();
 import axios from 'axios';
 import web3 from 'web3';
 import groupBy from 'lodash.groupby';
-import { objectMap } from './utils/helpers.js'
+import { objectMap, removeEmpty } from './utils/helpers.js'
 
 import {
   DelegateChanged,
@@ -26,7 +26,8 @@ const generateUrl = (address, topic0, fromBlock) => {
     apikey: ETHERSCAN_API_KEY,
   }
 
-  return `https://api.etherscan.io/api?${new URLSearchParams(params).toString()}`
+  const paramStr = new URLSearchParams(removeEmpty(params)).toString();
+  return `https://api.etherscan.io/api?${paramStr}`;
 }
 
 const convertHex = obj => {
@@ -38,7 +39,7 @@ const convertHex = obj => {
 }
 
 const processRaw = obj => {
-  return obj.data.result.map(d => convertHex(d))
+  return obj.data.result.map(d => convertHex(d));
 }
 
 const mergeAndOrder = (responses, fromBlock) => {
@@ -86,7 +87,7 @@ const mergeAndOrder = (responses, fromBlock) => {
   }
 }
 
-const getRecentLogs = async (contract, fromBlock) => {
+export const getRecentLogs = async (contract, fromBlock) => {
   const url1 = generateUrl(contract, DelegateChanged, fromBlock);
   const url2 = generateUrl(contract, DelegateVotesChanged, fromBlock);
   const url3 = generateUrl(contract, Transfer, fromBlock);
@@ -113,4 +114,21 @@ const getRecentLogs = async (contract, fromBlock) => {
     });
 }
 
-export default getRecentLogs;
+export const getRecentGovernanceLogs = async (govContract, fromBlock) => {
+  const url = generateUrl(govContract, null, fromBlock);
+  const request = axios.get(url)
+
+  // ADD error handling
+  return await axios.get(url)
+    .then(response => {
+      if (response.data.message === 'NOTOK') {
+        throw 'NOTOK';
+      };
+
+      return processRaw(response);
+    })
+    .catch(err => {
+      console.log('Error', err);
+      return null;
+    });
+}

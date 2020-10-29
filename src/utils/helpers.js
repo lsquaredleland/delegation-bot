@@ -52,3 +52,10 @@ export const objectMap = (obj, fn) => {
     )
   )
 };
+
+export const removeEmpty = obj =>
+  Object.fromEntries(
+    Object.entries(obj)
+      .filter(([k, v]) => v != null)
+      .map(([k, v]) => (typeof v === "object" ? [k, removeEmpty(v)] : [k, v]))
+  );
