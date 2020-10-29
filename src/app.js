@@ -121,21 +121,20 @@ const processGovLogs = (protocol, logs) => {
       case ProposalCanceled:
         ProposalCanceledCopy(protocol, address, transactionHash, data);
         break;
-      // case ProposalCreated:
-      //   ProposalCreatedCopy(protocol, address, transactionHash, data);
-      //   break;
+      case ProposalCreated:
+        ProposalCreatedCopy(protocol, address, transactionHash, data);
+        break;
       case ProposalExecuted:
         ProposalExecutedCopy(protocol, address, transactionHash, data);
         break;
       case ProposalQueued:
         ProposalQueuedCopy(protocol, address, transactionHash, data);
         break;
-      // case VoteCast:
-      //   VoteCastCopy(protocol, address, transactionHash, data);
-      //   break;
+      case VoteCast:
+        VoteCastCopy(protocol, address, transactionHash, data);
+        break;
     }
   });
-
 }
 
 const start = async () => {
@@ -152,7 +151,7 @@ const start = async () => {
     const compGovLogs = await getRecentGovernanceLogs(CompGovContract, fromBlock);
     processGovLogs(COMPOUND, compGovLogs)
 
-    await sleep(2000); // delay to not hit Etherscan's API limits
+   await sleep(2000); // delay to not hit Etherscan's API limits
 
     const {
       recentLogs: uniLogs,

@@ -2,6 +2,8 @@
 
 Every time there is a large change in delegation for [Uniswap](http://uniswap.io/) or [Compound Finance](https://compound.finance), this bot will tweet via [@dele_rekt](https://twitter.com/dele_rekt) on Twitter. Note that this app covers general cases of `DelegateChanged` and `DelegateVotesChanged` events well, but often complex transactions that involve multiple events are not handled gracefully.
 
+This app also logs governance activites such as `VoteCast` to `ProposalCreated`.
+
 ## Corner cases to handle
 - COMP farming results in multiple `delegateVotesChanged()` when claiming COMP...
 - Multiple transfers to different addresses all with different delegates...

@@ -12,6 +12,14 @@ import {
 import postTweet from './postTweet.js';
 
 
+const minVotes = (protocol, amt) => {
+  switch (protocol) {
+    case UNISWAP:
+      return amt > 100 ? true : false;
+    case COMPOUND:
+      return amt > 5000 ? true : false;
+  }
+}
 const lossLevel = (protocol, amt) => {
   switch (protocol) {
     case UNISWAP:
@@ -79,6 +87,10 @@ const getHandle = protocol => {
   return protocol === UNISWAP ? '@UniswapProtocol' : '@compoundfinance';
 }
 
+const getTicker = protocol => {
+  return protocol === UNISWAP ? 'UNI' : 'COMP';
+};
+
 const deletaDelegateCopy = (dvc, protocol) => {
   const { delegate, previousBalance, newBalance } = dvc;
   const plus = newBalance - previousBalance > 0 ? '+' : '';
@@ -90,7 +102,6 @@ const deletaDelegateCopy = (dvc, protocol) => {
 // b + 2c:"AAA transfers tokens to BBB, delegate CCC loses ___ tokens, delegate DDD gains ____"
 export const transferDelegateVotesChangedCopy = (protocol, txHash, transfer, dvc, dvc2=null) => {
   const { from, to, amount } = transfer;
-  const ticker = protocol === UNISWAP ? 'UNI' : 'COMP';
   const is2nd = dvc2 !== null;
 
   const ll = lossLevel(protocol, amount / 1e18);
@@ -99,7 +110,7 @@ export const transferDelegateVotesChangedCopy = (protocol, txHash, transfer, dvc
   }
 
   const status = `
-    ${emoji(ll)} ${identifyAddress(protocol, from)} transfers ${fmt(amount / 1e18)} $${ticker}.
+    ${emoji(ll)} ${identifyAddress(protocol, from)} transfers ${fmt(amount / 1e18)} $${getTicker(protocol)}.
     \n
     \ndelegate${is2nd ? 's' : ''}:\
     \n${deletaDelegateCopy(dvc, protocol)}
@@ -111,7 +122,6 @@ export const transferDelegateVotesChangedCopy = (protocol, txHash, transfer, dvc
 
 // Called whenever there is > 1 UNI transfers
 export const complexTransactionCopy = (protocol, txHash, dvcs) => {
-  const ticker = protocol === UNISWAP ? 'UNI' : 'COMP';
   const multiDvc = dvcs.length > 1;
 
   const maxDiff = Math.max(...dvcs.map(d => Math.abs(d.newBalance - d.previousBalance)));
@@ -122,7 +132,7 @@ export const complexTransactionCopy = (protocol, txHash, dvcs) => {
   }
 
   const status = `
-    ${emoji(ll)} $${ticker} transaction.
+    ${emoji(ll)} $${getTicker(protocol)} transaction.
     \n
     \ndelegate${multiDvc ? 's' : ''}:\
     \n${dvcs.map(d => deletaDelegateCopy(d, protocol)).join('\n')}
@@ -136,7 +146,7 @@ export const complexTransactionCopy = (protocol, txHash, dvcs) => {
 export const delegateChangedCopy = (protocol, txHash, dc, dvc, dvc2) => {
   const { delegator, fromDelegate, toDelegate } = dc;
   const { delegate, previousBalance, newBalance } = dvc;
-  const ticker = protocol === UNISWAP ? 'UNI' : 'COMP';
+  const ticker = getTicker(protocol);
 
   const amount = (newBalance - previousBalance) / 1e18; // verify accuracy
   let status = ''
@@ -187,8 +197,7 @@ const postpendUrl = (status, txHash) => {
 export const ProposalCanceledCopy = (protocol, address, txHash, data) => {
   const labeled = identifyAddress(protocol, address);
   const status = `
-    🔕Proposal ${data.id} Canceled
-    ${getHandle(protocol)}
+    🔕$${getTicker(protocol)} Proposal ${data.id} Canceled
     \n
     \nBy ${labeled}
   `;
@@ -196,9 +205,19 @@ export const ProposalCanceledCopy = (protocol, address, txHash, data) => {
   postTweet(postpendUrl(status, txHash));
 }
 
+// Test data
+// https://api.etherscan.io/api?module=logs&action=getLogs&toBlock=latest&address=0xc0dA01a04C3f3E0be433606045bB7017A7323E38&topic0=0x7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0
 export const ProposalCreatedCopy = (protocol, address, txHash, data) => {
-  const labeled = identifyAddress(protocol, address);
-  const status = `🏛️Proposal Created`;
+  const { proposer, startBlock, endBlock, description } = data;
+  const labeled = identifyAddress(protocol, proposer);
+  const title = description.split('\n')[0];
+  const estimate = Date.now() + (endBlock - startBlock) * 13 * 1000;
+  const status = `🏛️Proposal Created - ${title}
+    ${getHandle(protocol)}
+    \nvoting ends on${endBlock} (~${new Date(estimate).toUTCString()})
+    \n
+    \nBy ${labeled}
+  `;
 
   postTweet(postpendUrl(status, txHash));
 }
@@ -207,8 +226,7 @@ export const ProposalCreatedCopy = (protocol, address, txHash, data) => {
 export const ProposalExecutedCopy = (protocol, address, txHash, data) => {
   const labeled = identifyAddress(protocol, address);
   const status = `
-    🖋️📜Proposal ${data.id} Executed
-    ${getHandle(protocol)}
+    🖋️📜$${getTicker(protocol)} Proposal ${data.id} Executed
   `;
 
   postTweet(postpendUrl(status, txHash));
@@ -222,17 +240,27 @@ export const ProposalQueuedCopy = (protocol, address, txHash, data) => {
   const hoursDiff = (date - Date.now()) / 1000 / 60;
 
   const status = `
-    ⌛Proposal ${data.id} Queued
-    ${getHandle(protocol)}
+    ⌛$${getTicker(protocol)} Proposal ${data.id} Queued
     \nLive on ${date.toUTCString()} (~${hoursDiff} hours)
   `;
 
   postTweet(postpendUrl(status, txHash));
 }
 
+// call proposals() to get total for + neg votes, u/ to determine if quorum is met
+// also note how much time is left for said proposal (via endBlock)
 export const VoteCastCopy = (protocol, address, txHash, data) => {
-  const labeled = identifyAddress(protocol, address);
-  const status = '🗳VoteCast️';
+  const { voter, proposalId, support, votes } = data;
+  const labeled = identifyAddress(protocol, voter);
+
+  if (minVotes(votes / 1e18) !== true) {
+    return;
+  }
+
+  const status = `
+    🗳$${getTicker(protocol)} Vote Cast
+    \n${labeled} votes ${fmt(votes / 1e18)} $${ticker} ${support ? 'for' : 'against'} proposal ${proposalId}
+  `;
 
   postTweet(postpendUrl(status, txHash));
 }
