@@ -15,9 +15,11 @@ import postTweet from './postTweet.js';
 const minVotes = (protocol, amt) => {
   switch (protocol) {
     case UNISWAP:
-      return amt > 100 ? true : false;
-    case COMPOUND:
       return amt > 5000 ? true : false;
+    case COMPOUND:
+      return amt > 100 ? true : false;
+    default:
+      return false;
   }
 }
 const lossLevel = (protocol, amt) => {
@@ -253,13 +255,14 @@ export const VoteCastCopy = (protocol, address, txHash, data) => {
   const { voter, proposalId, support, votes } = data;
   const labeled = identifyAddress(protocol, voter);
 
-  if (minVotes(votes / 1e18) !== true) {
+  if (minVotes(protocol, votes / 1e18) !== true) {
     return;
   }
 
   const status = `
     🗳$${getTicker(protocol)} Vote Cast
-    \n${labeled} votes ${fmt(votes / 1e18)} $${ticker} ${support ? 'for' : 'against'} proposal ${proposalId}
+    \n${labeled} votes ${fmt(votes / 1e18)} $${getTicker(protocol)} \
+    ${support ? 'for' : 'against'} proposal ${proposalId}
   `;
 
   postTweet(postpendUrl(status, txHash));

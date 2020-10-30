@@ -151,7 +151,7 @@ const start = async () => {
     const compGovLogs = await getRecentGovernanceLogs(CompGovContract, fromBlock);
     processGovLogs(COMPOUND, compGovLogs)
 
-   await sleep(2000); // delay to not hit Etherscan's API limits
+    await sleep(2000); // delay to not hit Etherscan's API limits
 
     const {
       recentLogs: uniLogs,
