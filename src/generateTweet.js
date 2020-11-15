@@ -31,7 +31,7 @@ const lossLevel = (protocol, amt) => {
         return 3
       } else if (amt > 100000) {
         return 2
-      } else if (amt > 10000) {
+      } else if (amt > 50000) {
         return 1
       }
       return 0
@@ -42,7 +42,7 @@ const lossLevel = (protocol, amt) => {
         return 3
       } else if (amt > 1000) {
         return 2
-      } else if (amt > 100) {
+      } else if (amt > 500) {
         return 1
       }
       return 0
