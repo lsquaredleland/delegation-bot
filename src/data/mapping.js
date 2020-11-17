@@ -8,6 +8,7 @@ export const UniDelegates = {
   '0x84bb5196F0085D61a7C9AC5B903a26D7f009aC13': 'chrisblec', //@ - temporarily removed
   '0x0be0ecc301a1c0175f07a66243cff628c24db852': 'HiturunkE', //@ - temporarily removed
   '0xC9f7d5870Cc691E4F8d25399EC10C90d55805AC7': 'bneiluj', // currently no delegates at all //@ - temporarily removed
+  '0xbbf3f1421D886E9b2c5D716B5192aC998af2012c': 'cUni',
 }
 
 export const CompDelegates = {
